@@ -98,8 +98,8 @@ public class Util {
 
     public enum AddressScope {GLOBAL,SITE_LOCAL,LINK_LOCAL,LOOPBACK,NON_LOOPBACK}
 
-    private static boolean   ipv4_stack_available=false, ipv6_stack_available=false;
-    private static StackType ip_stack_type=_getIpStackType();
+    private static boolean          ipv4_stack_available=false, ipv6_stack_available=false;
+    private static final StackType  ip_stack_type=_getIpStackType();
 
     protected static ResourceBundle resource_bundle;
 
@@ -121,9 +121,6 @@ public class Util {
         PRIMITIVE_TYPES.put(Short.class,TYPE_SHORT);
         PRIMITIVE_TYPES.put(String.class,TYPE_STRING);
         PRIMITIVE_TYPES.put(byte[].class,TYPE_BYTEARRAY);
-
-        if(ip_stack_type == StackType.Unknown)
-            ip_stack_type=StackType.IPv6;
 
         try {
             String cchm_initial_capacity=System.getProperty(Global.CCHM_INITIAL_CAPACITY);
@@ -2860,13 +2857,11 @@ public class Util {
                                               BiConsumer<Field,Object> field_func, BiConsumer<Method,Object> method_func) {
         Objects.requireNonNull(obj, "target object cannot be null");
         if(field_func != null) {
-            for(Class<?> clazz=obj.getClass(); clazz != null; clazz=clazz.getSuperclass()) {
-                Stream.of(clazz.getDeclaredFields()).filter(f -> filter != null && filter.test(f))
-                  .forEach(f -> field_func.accept(f, obj));
-            }
+            Stream.of(Util.getAllDeclaredFieldsWithAnnotations(obj.getClass()))
+              .filter(f -> filter != null && filter.test(f)).forEach(f -> field_func.accept(f, obj));
         }
         if(method_func != null) {
-            Stream.of(obj.getClass().getMethods())
+            Stream.of(Util.getAllDeclaredMethodsWithAnnotations(obj.getClass()))
               .filter(m -> filter != null && filter.test(m)).forEach(m -> method_func.accept(m, obj));
         }
     }
@@ -3815,6 +3810,23 @@ public class Util {
         return null;
     }
 
+    /**
+     * Finds an address given a symbolic name. Parameter ip_version has precedence over system props such as
+     * java.net.preferIPv4Stack or java.net.preferIPv6Addresses
+     * @param host The symbolic nbame of the host
+     * @param ip_version The IP version, e.g. {@link StackType#IPv4} or {@link StackType#IPv6}
+     * @return The resolved address
+     * @throws UnknownHostException Thrown if host cannot be resolved to an InetAddress
+     */
+    public static InetAddress getByName(String host, StackType ip_version) throws UnknownHostException {
+        if(ip_version == null || ip_version == StackType.Dual)
+            return InetAddress.getByName(host);
+        Class<?> clazz=ip_version == StackType.IPv6? Inet6Address.class : Inet4Address.class;
+        InetAddress[] addrs=InetAddress.getAllByName(host); // always returns a non-null at least 1-element array
+        return Stream.of(addrs).filter(a -> a != null && a.getClass() == clazz)
+          .findFirst().orElse(InetAddress.getByName(host));
+    }
+
 
     public static boolean checkForLinux() {
         return checkForPresence("os.name","linux");
@@ -3877,9 +3889,7 @@ public class Util {
     }
 
 
-    /**
-     * Returns the first non-loopback address on any interface on the current host.
-     */
+    /** Returns the first non-loopback address on any interface on the current host */
     public static InetAddress getNonLoopbackAddress() throws SocketException {
         return getAddress(AddressScope.NON_LOOPBACK);
     }
@@ -3889,14 +3899,12 @@ public class Util {
      * Returns the first address on any interface of the current host, which satisfies scope
      */
     public static InetAddress getAddress(AddressScope scope) throws SocketException {
-        InetAddress address=null;
-
         Enumeration intfs=NetworkInterface.getNetworkInterfaces();
         while(intfs.hasMoreElements()) {
             NetworkInterface intf=(NetworkInterface)intfs.nextElement();
             try {
                 if(isUp(intf)) {
-                    address=getAddress(intf,scope);
+                    InetAddress address=getAddress(intf,scope);
                     if(address != null)
                         return address;
                 }
@@ -3967,6 +3975,11 @@ public class Util {
         }
         return null;
     }
+    public static InetAddress getAddressByCustomCode(String value) throws Exception {
+        Class<Supplier<InetAddress>> clazz=(Class<Supplier<InetAddress>>)Util.loadClass(value, (ClassLoader)null);
+        Supplier<InetAddress> supplier=clazz.getDeclaredConstructor().newInstance();
+        return supplier.get();
+    }
 
     /** Always returns true unless there is a socket exception - will be removed when GraalVM issue
      * https://github.com/oracle/graal/pull/1076 has been fixed */
@@ -4016,7 +4029,7 @@ public class Util {
             }
 
             if(match) {
-                if((addr instanceof Inet4Address && ip_version == StackType.IPv4) ||
+                if(ip_version == StackType.Dual || (addr instanceof Inet4Address && ip_version == StackType.IPv4) ||
                   (addr instanceof Inet6Address && ip_version == StackType.IPv6))
                     return addr;
             }
@@ -4066,6 +4079,13 @@ public class Util {
         return ipv6_stack_available;
     }
 
+    public static boolean isIpAddressPermissible(InetAddress addr) {
+        if(ipv4_stack_available && !ipv6_stack_available)
+            return !(addr instanceof Inet6Address);
+        // todo: when we have an IPv4 address in an IPv6 stack -> map it to an IPv6 address
+        return true;
+    }
+
     /** Returns true if the 2 addresses are of the same type (IPv4 or IPv6) */
     public static boolean sameAddresses(InetAddress one,InetAddress two) {
         return one == null
@@ -4077,27 +4097,30 @@ public class Util {
     /**
      * Tries to determine the type of IP stack from the available interfaces and their addresses and from the
      * system properties (java.net.preferIPv4Stack and java.net.preferIPv6Addresses)
-     * @return StackType.IPv4 for an IPv4 only stack, StackYTypeIPv6 for an IPv6 only stack, and StackType.Unknown
+     * @return StackType.IPv4 for an IPv4 only stack, StackType.IPv6 for an IPv6 only stack, and StackType.Unknown
      * if the type cannot be detected
      */
     private static StackType _getIpStackType() {
-        ipv4_stack_available=isStackAvailable(true);
-        ipv6_stack_available=isStackAvailable(false);
+        Collection<InetAddress> all_addresses=getAllAvailableAddresses();
+        for(InetAddress addr: all_addresses) {
+            if(addr instanceof Inet4Address)
+                ipv4_stack_available=true;
+            else if(addr instanceof Inet6Address)
+                ipv6_stack_available=true;
+            if(ipv4_stack_available && ipv6_stack_available)
+                break;
+        }
 
         // if only IPv4 stack available
-        if(ipv4_stack_available && !ipv6_stack_available) {
+        if(ipv4_stack_available && !ipv6_stack_available)
             return StackType.IPv4;
-        }
         // if only IPv6 stack available
-        else if(ipv6_stack_available && !ipv4_stack_available) {
+        if(ipv6_stack_available && !ipv4_stack_available)
             return StackType.IPv6;
-        }
-        // if dual stack
-        else if(ipv4_stack_available && ipv6_stack_available) {
-            // get the System property which records user preference for a stack on a dual stack machine
-            return Boolean.getBoolean(Global.IPv6)? StackType.IPv6 : StackType.IPv4;
-        }
-        return StackType.Unknown;
+        // If dual stack or no stack available: get the System property which records user pref for a stack
+        // If both java.net.preferIPv4Stack _and_ java.net.preferIPv6Addresses are set, prefer IPv4 (like the JDK does)
+        return Boolean.getBoolean(Global.IPv4)? StackType.IPv4
+          : Boolean.getBoolean(Global.IPv6)? StackType.IPv6 : StackType.Dual;
     }
 
 
@@ -4123,22 +4146,21 @@ public class Util {
     public static Collection<InetAddress> getAllAvailableAddresses() {
         Set<InetAddress> retval=new HashSet<>();
         Enumeration en;
-
         try {
             en=NetworkInterface.getNetworkInterfaces();
             if(en == null)
                 return retval;
             while(en.hasMoreElements()) {
                 NetworkInterface intf=(NetworkInterface)en.nextElement();
+                if(!intf.isUp())
+                    continue;
                 Enumeration<InetAddress> addrs=intf.getInetAddresses();
                 while(addrs.hasMoreElements())
                     retval.add(addrs.nextElement());
             }
         }
         catch(SocketException e) {
-            e.printStackTrace();
         }
-
         return retval;
     }
 
@@ -4156,6 +4178,21 @@ public class Util {
             sb.append('[').append(prot_name).append("] ");
         sb.append(bind_addr).append(" is not a valid address on any local network interface");
         throw new BindException(sb.toString());
+    }
+
+
+    public static InetAddress convertToIPv6(InetAddress ipv4_addr) throws UnknownHostException {
+        if(!(ipv4_addr instanceof Inet4Address))
+            throw new IllegalArgumentException(String.format("address %s is not an IPv4 address", ipv4_addr));
+        byte[] bytes=ipv4_addr.getAddress();
+        byte[] ipv4asIpV6addr=new byte[16];
+        ipv4asIpV6addr[10]=(byte)0xff;
+        ipv4asIpV6addr[11]=(byte)0xff;
+        ipv4asIpV6addr[12]=bytes[0];
+        ipv4asIpV6addr[13]=bytes[1];
+        ipv4asIpV6addr[14]=bytes[2];
+        ipv4asIpV6addr[15]=bytes[3];
+        return InetAddress.getByAddress(ipv4asIpV6addr);
     }
 
 
@@ -4413,26 +4450,6 @@ public class Util {
         return value;
     }
 
-    //    /**
-    //     * Replaces variables with values from system properties. If a system property is not found, the property is
-    //     * removed from the output string
-    //     * @param input
-    //     * @return
-    //     */
-    //    public static String substituteVariables(String input) throws Exception {
-    //        Collection<Configurator.ProtocolConfiguration> configs=Configurator.parseConfigurations(input);
-    //        for(Configurator.ProtocolConfiguration config: configs) {
-    //            for(Iterator<Map.Entry<String,String>> it=config.getProperties().entrySet().iterator(); it.hasNext();) {
-    //                Map.Entry<String,String> entry=it.next();
-    //
-    //
-    //            }
-    //        }
-    //
-    //
-    //        return null;
-    //    }
-
 
     /**
      * Replaces variables of ${var:default} with System.getProperty(var, default). If no variables are found, returns
@@ -4479,12 +4496,10 @@ public class Util {
             default_val=s.substring(index + 1);
             if(default_val != null && !default_val.isEmpty())
                 default_val=default_val.trim();
-            // retval=System.getProperty(var, default_val);
             retval=_getProperty(var,default_val);
         }
         else {
             var=s;
-            // retval=System.getProperty(var);
             retval=_getProperty(var,null);
         }
         return retval;

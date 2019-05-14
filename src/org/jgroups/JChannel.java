@@ -176,12 +176,12 @@ public class JChannel implements Closeable {
             prot.setProtocolStack(prot_stack);
         }
         prot_stack.init();
-
+        StackType ip_version=Util.getIpStackType();
         // Substitute vars with defined system props (if any)
         List<Protocol> prots=prot_stack.getProtocols();
         Map<String,String> map=new HashMap<>();
         for(Protocol prot: prots)
-            Configurator.resolveAndAssignFields(prot, map);
+            Configurator.resolveAndAssignFields(prot, map, ip_version);
     }
 
     /**
@@ -198,12 +198,12 @@ public class JChannel implements Closeable {
             prot.setProtocolStack(prot_stack);
         }
         prot_stack.init();
-
+        StackType ip_version=Util.getIpStackType();
         // Substitute vars with defined system props (if any)
         List<Protocol> prots=prot_stack.getProtocols();
         Map<String,String> map=new HashMap<>();
         for(Protocol prot: prots)
-            Configurator.resolveAndAssignFields(prot, map);
+            Configurator.resolveAndAssignFields(prot, map, ip_version);
     }
 
 

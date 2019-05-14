@@ -36,7 +36,7 @@ public class ProgrammaticChat {
             return;
         }
 
-        InetAddress bind_address=bind_addr != null? PropertyConverters.Default.convertBindAddress(bind_addr) : Util.getLocalhost();
+        InetAddress bind_address=bind_addr != null? PropertyConverters.Default.convertAddress(bind_addr, Util.getIpStackType()) : Util.getLocalhost();
         Protocol[] prot_stack={
           new TCP().setBindAddress(bind_address).setBindPort(7800)
             .setDiagnosticsEnabled(false), // todo: remove when MulticastSocket works

@@ -110,7 +110,7 @@ public class ProgrammaticUPerf extends ReceiverAdapter implements MethodInvoker 
 
     public void init(String name, AddressGenerator generator, String bind_addr, int bind_port) throws Throwable {
 
-        InetAddress bind_address=bind_addr != null? PropertyConverters.Default.convertBindAddress(bind_addr) : Util.getLocalhost();
+        InetAddress bind_address=bind_addr != null? PropertyConverters.Default.convertAddress(bind_addr, Util.getIpStackType()) : Util.getLocalhost();
         Protocol[] prot_stack={
           new TCP().setBindAddress(bind_address).setBindPort(7800)
             .setDiagnosticsEnabled(true)
@@ -264,7 +264,7 @@ public class ProgrammaticUPerf extends ReceiverAdapter implements MethodInvoker 
             invoker.join();
         long total_time=System.currentTimeMillis() - start;
 
-        System.out.println("");
+        System.out.println();
         AverageMinMax avg_gets=null, avg_puts=null;
         for(Invoker invoker: invokers) {
             if(print_invokers)

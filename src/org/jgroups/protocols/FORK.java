@@ -17,16 +17,17 @@ import org.jgroups.util.*;
 import org.w3c.dom.Node;
 
 import java.io.*;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.AccessControlException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
+
+import static org.jgroups.stack.Configurator.initializeAttrs;
 
 /**
  * The FORK protocol; multiplexes messages to different forks in a stack (https://issues.jboss.org/browse/JGRP-1613).
@@ -319,7 +320,21 @@ public class FORK extends Protocol {
      * sets the protocol stack as top protocol, connects the protocols and calls init() on them. Returns
      * the protocols in a list, from bottom to top */
     protected static List<Protocol> createProtocols(ProtocolStack stack, List<ProtocolConfiguration> protocol_configs) throws Exception {
-        return Configurator.createProtocols(protocol_configs,stack);
+        List<Protocol> protocols=Configurator.createProtocols(protocol_configs, stack);
+
+        // the logic below is described in https://issues.jboss.org/browse/JGRP-2343
+        StackType ip_version=Util.getIpStackType();
+        if(ip_version == StackType.Dual) {
+            Collection<InetAddress> addresses=Configurator.getInetAddresses(protocol_configs, protocols);
+            boolean ip_v6_addrs_present=addresses.stream().anyMatch(a -> a instanceof Inet6Address);
+            ip_version=ip_v6_addrs_present? StackType.IPv6 : StackType.IPv4;
+        }
+        for(int i=0; i < protocol_configs.size(); i++) {
+            ProtocolConfiguration config=protocol_configs.get(i);
+            Protocol prot=protocols.get(i);
+            initializeAttrs(prot, config, ip_version);
+        }
+        return protocols;
     }
 
     public static InputStream getForkStream(String config) throws IOException {

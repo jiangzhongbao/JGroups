@@ -12,18 +12,11 @@ import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.TP;
-import org.jgroups.util.MessageBatch;
-import org.jgroups.util.SocketFactory;
-import org.jgroups.util.ThreadFactory;
-import org.jgroups.util.Util;
+import org.jgroups.util.*;
 import org.w3c.dom.Node;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 
 /**
@@ -128,17 +121,16 @@ public abstract class Protocol {
      * @throws Exception if any of the specified properties are unresolvable or unrecognized.
      */
     public <T extends Protocol> T setProperties(Map<String, String> properties) throws Exception {
-        // These Configurator methods are destructive, so make a defensive copy
+        // these Configurator methods are destructive, so make a defensive copy
+        StackType ip_version=Util.getIpStackType();
         Map<String, String> copy = new HashMap<>(properties);
-        Configurator.removeDeprecatedProperties(this, copy);
-        Configurator.resolveAndAssignFields(this, copy);
-        Configurator.resolveAndInvokePropertyMethods(this, copy);
-        List<Object> objects = this.getConfigurableObjects();
-        if (objects != null) {
-            for (Object object : objects) {
-                Configurator.removeDeprecatedProperties(object, copy);
-                Configurator.resolveAndAssignFields(object, copy);
-                Configurator.resolveAndInvokePropertyMethods(object, copy);
+        Configurator.resolveAndAssignFields(this, copy, ip_version);
+        Configurator.resolveAndInvokePropertyMethods(this, copy, ip_version);
+        List<Object> objects=this.getConfigurableObjects();
+        if(objects != null) {
+            for(Object object: objects) {
+                Configurator.resolveAndAssignFields(object, copy, ip_version);
+                Configurator.resolveAndInvokePropertyMethods(object, copy, ip_version);
             }
         }
         if (!copy.isEmpty()) {
@@ -151,9 +143,8 @@ public abstract class Protocol {
     /**
      * After configuring the protocol itself from the properties defined in the XML config, a protocol might have
      * additional objects which need to be configured. This callback allows a protocol developer to configure those
-     * other objects. This call is guaranteed to be invoked <em>after</em> the protocol itself has
-     * been configured. See AUTH for an example.
-     * @return
+     * other objects. This call is guaranteed to be invoked <em>after</em> the protocol itself has been configured.
+     * See AUTH for an example.
      */
     protected List<Object> getConfigurableObjects() {return null;}
 

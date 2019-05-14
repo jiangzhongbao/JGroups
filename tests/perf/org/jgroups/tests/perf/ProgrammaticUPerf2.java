@@ -98,7 +98,7 @@ public class ProgrammaticUPerf2 extends ReceiverAdapter {
                 }
             };
 
-            InetAddress bind_address=PropertyConverters.Default.convertBindAddress(BIND_ADDR);
+            InetAddress bind_address=PropertyConverters.Default.convertAddress(BIND_ADDR, Util.getIpStackType());
             Protocol[] prot_stack={
               new TCP().setBindAddress(bind_address).setBindPort(7800)
                 .setDiagnosticsEnabled(true)
@@ -296,7 +296,7 @@ public class ProgrammaticUPerf2 extends ReceiverAdapter {
             invoker.join();
         long total_time=System.currentTimeMillis() - start;
 
-        System.out.println("");
+        System.out.println();
         AverageMinMax avg_gets=null, avg_puts=null;
         for(Invoker invoker: invokers) {
             if(print_invokers)

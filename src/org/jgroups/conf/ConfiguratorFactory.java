@@ -9,8 +9,6 @@ import java.io.*;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.AccessControlException;
-import java.util.List;
-import java.util.Map;
 
 /**
  * The ConfigurationFactory is a factory that returns a protocol stack configurator.
@@ -239,25 +237,6 @@ public class ConfiguratorFactory {
         }
     }
 
-    /**
-     * Replace variables of the form ${var:default} with the getProperty(var,
-     * default)
-     * 
-     * @param configurator
-     */
-    public static void substituteVariables(ProtocolStackConfigurator configurator) {
-        List<ProtocolConfiguration> protocols=configurator.getProtocolStack();
-        protocols.stream().filter(data -> data != null).forEach(data -> {
-            Map<String,String> parms=data.getProperties();
-            for(Map.Entry<String,String> entry : parms.entrySet()) {
-                String val=entry.getValue();
-                String replacement=Util.substituteVariable(val);
-                if(!replacement.equals(val)) {
-                    entry.setValue(replacement);
-                }
-            }
-        });
-    }          
 }
 
 
