@@ -17,6 +17,7 @@ import org.jgroups.util.*;
 import org.w3c.dom.Node;
 
 import java.io.*;
+import java.lang.reflect.Field;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
@@ -28,6 +29,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 
 import static org.jgroups.stack.Configurator.initializeAttrs;
+import static org.jgroups.stack.Configurator.resolveAndAssignField;
 
 /**
  * The FORK protocol; multiplexes messages to different forks in a stack (https://issues.jboss.org/browse/JGRP-1613).
@@ -322,13 +324,19 @@ public class FORK extends Protocol {
     protected static List<Protocol> createProtocols(ProtocolStack stack, List<ProtocolConfiguration> protocol_configs) throws Exception {
         List<Protocol> protocols=Configurator.createProtocols(protocol_configs, stack);
 
-        // the logic below is described in https://issues.jboss.org/browse/JGRP-2343
+        // Determine how to resolve addresses that are set (e.g.) via symbolic names, by the type of bind_addr in the
+        // transport. The logic below is described in https://issues.jboss.org/browse/JGRP-2343
         StackType ip_version=Util.getIpStackType();
-        if(ip_version == StackType.Dual) {
-            Collection<InetAddress> addresses=Configurator.getInetAddresses(protocol_configs, protocols);
-            boolean ip_v6_addrs_present=addresses.stream().anyMatch(a -> a instanceof Inet6Address);
-            ip_version=ip_v6_addrs_present? StackType.IPv6 : StackType.IPv4;
-        }
+        TP transport=(TP)protocols.get(0);
+        ProtocolConfiguration cfg=protocol_configs.get(0);
+        Field bind_addr_field=Util.getField(transport.getClass(), "bind_addr");
+        resolveAndAssignField(transport, bind_addr_field, cfg.getProperties(), ip_version);
+        InetAddress resolved_addr=(InetAddress)Util.getField(bind_addr_field, transport);
+        if(resolved_addr != null)
+            ip_version=resolved_addr instanceof Inet6Address? StackType.IPv6 : StackType.IPv4;
+        else if(ip_version == StackType.Dual)
+            ip_version=StackType.IPv4; // prefer IPv4 addresses
+
         for(int i=0; i < protocol_configs.size(); i++) {
             ProtocolConfiguration config=protocol_configs.get(i);
             Protocol prot=protocols.get(i);

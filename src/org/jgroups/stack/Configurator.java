@@ -35,10 +35,10 @@ public class Configurator {
     protected static final Log    log=LogFactory.getLog(Configurator.class);
     protected final ProtocolStack stack;
 
-    @FunctionalInterface
+/*    @FunctionalInterface
     protected interface AddressVisitor {
         void accept(Protocol p, AccessibleObject ao, Map<String,String> properties, String property_name, String property_value);
-    }
+    }*/
 
 
     public Configurator() {
@@ -460,64 +460,16 @@ public class Configurator {
         return inetAddressMap;
     }
 
-    public static Collection<InetAddress> getInetAddressesOld(List<ProtocolConfiguration> protocol_configs,
-                                                           List<Protocol> protocols) throws Exception {
-        Collection<InetAddress> addresses=new HashSet<>();
-        for(int i=0; i < protocol_configs.size(); i++) {
-            ProtocolConfiguration protocol_config=protocol_configs.get(i);
-            Protocol protocol=protocols.get(i);
 
-            // regenerate the properties which were destroyed during basic property processing
-            Map<String,String> properties=new HashMap<>(protocol_config.getProperties());
-
-            // check which InetAddress-related properties are non-null, and create an InetAddressInfo structure for them
-            Method[] methods=Util.getAllDeclaredMethodsWithAnnotations(protocol.getClass(), Property.class);
-            for(int j=0; j < methods.length; j++) {
-                if(isSetPropertyMethod(methods[j], protocol.getClass())) {
-                    String propertyName=PropertyHelper.getPropertyName(methods[j]);
-                    String propertyValue=properties.get(propertyName);
-
-                    // if there is a systemProperty attribute defined in the annotation, set the property value from the system property
-                    String tmp=grabSystemProp(methods[j].getAnnotation(Property.class));
-                    if(tmp != null)
-                        propertyValue=tmp;
-
-                    if(propertyValue != null && InetAddressInfo.isInetAddressRelated(methods[j])) {
-                        convertAddress(propertyValue, addresses);
-                    }
-                }
-            }
-
-            // traverse class hierarchy and find all annotated fields and add them to the list if annotated
-            Field[] fields=Util.getAllDeclaredFieldsWithAnnotations(protocol.getClass(), Property.class);
-            for(int j=0; j < fields.length; j++) {
-                String propertyName=PropertyHelper.getPropertyName(fields[j], properties);
-                String propertyValue=properties.get(propertyName);
-
-                // if there is a systemProperty attribute defined in the annotation, set the property value from the system property
-                String tmp=grabSystemProp(fields[j].getAnnotation(Property.class));
-                if(tmp != null)
-                    propertyValue=tmp;
-
-                if((propertyValue != null || !PropertyHelper.usesDefaultConverter(fields[j]))
-                  && InetAddressInfo.isInetAddressRelated(fields[j])) {
-                    convertAddress(propertyValue, addresses);
-                }
-            }
-        }
-        return addresses;
-    }
-
-
-    public static Collection<InetAddress> getInetAddresses(List<ProtocolConfiguration> protocol_configs,
+   /* public static Collection<InetAddress> getInetAddresses(List<ProtocolConfiguration> protocol_configs,
                                                             List<Protocol> protocols) throws Exception {
         Collection<InetAddress> addresses=new HashSet<>();
         forAllInetAddresses(protocol_configs, protocols, (prot,f,props,name,value) -> convertAddress(value, addresses));
         return addresses;
     }
+*/
 
-
-    /** Finds all attrs that are addresses in a protocol stack, and invokes a lambda against them */
+    /** Finds all attrs that are addresses in a protocol stack, and invokes a lambda against them *//*
     protected static void forAllInetAddresses(List<ProtocolConfiguration> protocol_configs,
                                               List<Protocol> protocols, AddressVisitor visitor) throws Exception {
         for(int i=0; i < protocol_configs.size(); i++) {
@@ -559,10 +511,10 @@ public class Configurator {
                     visitor.accept(protocol, fields[j], properties, propertyName, propertyValue);
             }
         }
-    }
+    }*/
 
 
-    protected static void convertAddress(String input, final Collection<InetAddress> addresses) {
+    /*protected static void convertAddress(String input, final Collection<InetAddress> addresses) {
         if(input == null || addresses == null)
             return;
         if(input.indexOf(',') != -1) {
@@ -587,7 +539,7 @@ public class Configurator {
         }
         catch(Exception e) {
         }
-    }
+    }*/
 
 
     public static List<InetAddress> getInetAddresses(List<Protocol> protocols) throws Exception {
@@ -626,7 +578,7 @@ public class Configurator {
      */
     public static void setDefaultValues(List<ProtocolConfiguration> protocol_configs, List<Protocol> protocols,
                                         StackType ip_version) throws Exception {
-        InetAddress default_ip_address=Util.getNonLoopbackAddress();
+        InetAddress default_ip_address=Util.getNonLoopbackAddress(ip_version);
         if(default_ip_address == null) {
             log.warn(Util.getMessage("OnlyLoopbackFound"), ip_version);
             default_ip_address=Util.getLocalhost(ip_version);

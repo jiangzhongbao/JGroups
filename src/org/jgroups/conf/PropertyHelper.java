@@ -11,6 +11,7 @@ import org.jgroups.util.Util;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Objects;
 
 /*
  * A class of static methods for performing commonly used functions with @Property annotations.
@@ -61,12 +62,9 @@ public final class PropertyHelper {
 
     public static Object getConvertedValue(Object obj, Field field, Map<String,String> props, String prop,
                                            boolean check_scope, StackType ip_version) throws Exception {
-        if(obj == null)
-            throw new IllegalArgumentException("Cannot get converted value: Object is null");
-        if(field == null)
-            throw new IllegalArgumentException("Cannot get converted value: Field is null");
-        if(props == null)
-            throw new IllegalArgumentException("Cannot get converted value: Properties is null");
+        Objects.requireNonNull(obj,   "cannot get converted value: obj is null");
+        Objects.requireNonNull(field, "cannot get converted value: field is null");
+        Objects.requireNonNull(props, "cannot get converted value: props is null");
 
         Property annotation=field.getAnnotation(Property.class);
         if(annotation == null)
